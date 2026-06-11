@@ -3,25 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Threat Intel Scammer Mapper</title>
-  <link rel="stylesheet" href="style.css" />
-  <!-- CSP meta for security -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws://localhost:*;" />
+  <title>Looker — Cyber Threat Intelligence Console | Police Cyber Cell</title>
+  <meta name="description" content="Law enforcement OSINT threat intelligence platform for scammer mapping, entity correlation, and criminal network analysis.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
-  <header class="glass">
-    <h1>Scammer Mapping & Threat Intel</h1>
-    <div class="search-bar glass">
-      <input type="text" id="searchInput" placeholder="Search entity (IP, email, handle)" />
-      <button id="searchBtn">Search</button>
-    </div>
-  </header>
-
-  <main>
-    <div id="graphContainer" class="glass"></div>
-  </main>
-
-  <script src="https://unpkg.com/cytoscape@3.24.0/dist/cytoscape.min.js"></script>
-  <script src="main.js" type="module"></script>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>

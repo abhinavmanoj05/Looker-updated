@@ -12,9 +12,14 @@ from typing import List
 
 import joblib
 import uvicorn
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.staticfiles import StaticFiles
 from neo4j import GraphDatabase
 from pydantic import BaseModel, Field
 from sklearn.linear_model import SGDClassifier
@@ -33,6 +38,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files for React production build if available
+dist_dir = Path(__file__).parent.parent / "frontend" / "dist"
+if (dist_dir / "assets").exists():
+    app.mount("/assets", StaticFiles(directory=dist_dir / "assets"), name="assets")
+
+
 
 API_KEY = os.getenv("LOOKER_API_KEY", "").strip()
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
@@ -274,6 +286,9 @@ async def get_graph_data_v1(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 async def serve_single_interface():
+    react_index = dist_dir / "index.html"
+    if react_index.exists():
+        return HTMLResponse(react_index.read_text(encoding="utf-8"))
     html_path = Path(__file__).with_name("index.html.html")
     if html_path.exists():
         return HTMLResponse(html_path.read_text(encoding="utf-8"))
