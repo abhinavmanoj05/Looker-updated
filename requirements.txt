@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+neo4j
+scikit-learn
+numpy
+pydantic
+pydantic-settings
+requests
+joblib
+python-dotenv

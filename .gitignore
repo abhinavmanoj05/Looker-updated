@@ -1,0 +1,46 @@
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.pyc.*
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.*
+
+# Node / frontend dependencies and build output
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+
+# Editor / OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Local logs and runtime data
+*.log
+*.sqlite3
+*.db
+*.pid
+audit_log.jsonl
+case_ledger.json
+
+# Project-generated artifacts
+intel_self_trainer.pkl
+
+# Temporary scratch files
+scratch/
+*.tmp
+*.temp

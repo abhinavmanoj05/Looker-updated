@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  # 1. Looker Distributed Task Broker
+  redis-broker:
+    image: redis:7.2-alpine
+    container_name: looker_redis_broker
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+    networks:
+      - looker_net
+
+  # 2. Looker Enterprise Graph Database Cluster
+  neo4j-graph:
+    image: neo4j:5.18-community  # Changed to Community unless you have an official Enterprise license key
+    container_name: looker_neo4j_graph
+    ports:
+      - "7474:7474" # HTTP Dashboard Browser
+      - "7687:7687" # Bolt protocol connection port
+    environment:
+      - NEO4J_AUTH=neo4j/HardenedLEPassword2026!
+    volumes:
+      - looker_neo4j_data:/data
+    restart: unless-stopped
+    networks:
+      - looker_net
+
+# 3. Dedicated Networking & Volumes 
+networks:
+  looker_net:
+    driver: bridge
+
+volumes:
+  looker_neo4j_data:

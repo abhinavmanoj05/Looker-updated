@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Looker — Cyber Threat Intelligence Console | Police Cyber Cell</title>
+    <meta name="description" content="Law enforcement OSINT threat intelligence platform for scammer mapping, entity correlation, and criminal network analysis.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.28.1/cytoscape.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        /* =========================================================
+           DESIGN SYSTEM — TOKENS
+        ========================================================= */
+        :root {
+            --bg:           #060a0f;
+            --surface:      #0c1118;
+            --surface-2:    #111822;
+            --surface-3:    #172030;
+            --border:       #1e2d40;
+            --border-hover: #2e4560;
+            --text:         #e2ecf8;
+            --text-muted:   #6b8aaa;
+            --text-dim:     #3d5470;
+            --accent:       #3b9cff;
+            --accent-glow:  rgba(59,156,255,0.18);
+            --green:        #1fd693;
+            --amber:        #f5a623;
+            --red:          #ff4d6d;
+            --purple:       #a78bfa;
+            --teal:         #22d3ee;
+            --radius:       12px;
+            --radius-sm:    8px;
+            --shadow:       0 4px 30px rgba(0,0,0,0.5);
+        }
+
+        /* =========================================================
+           GLOBAL RESET + BASE
+        ========================================================= */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html { scroll-behavior: smooth; }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            overflow-x: hidden;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        ::selection { background: rgba(59,156,255,0.3); }
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-track { background: var(--bg); }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 9px; }
+
+        /* =========================================================
+           BACKGROUND GRID EFFECT
+        ========================================================= */
+        body::before {
+            content: '';
+            position: fixed; inset: 0; z-index: -1;
+            background-image:
+                linear-gradient(rgba(59,156,255,0.025) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(59,156,255,0.025) 1px, transparent 1px);
+            background-size: 50px 50px;
+        }
+
+        /* =========================================================
+           LAYOUT
+        ========================================================= */
+        .app-shell {
+            display: grid;
+            grid-template-rows: auto 1fr;
+            min-height: 100vh;
+        }
+
+        /* HEADER */
+        .topbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 24px;
+            background: rgba(6,10,15,0.92);
+            border-bottom: 1px solid var(--border);
+            backdrop-filter: blur(12px);
+            position: sticky; top: 0; z-index: 100;
+            gap: 16px;
+        }
+        .topbar-brand { display: flex; align-items: center; gap: 14px; }
+        .brand-icon {
+            width: 38px; height: 38px;
+            background: linear-gradient(135deg, #1a5fff, #0096ff);
+            border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+            box-shadow: 0 0 20px rgba(59,156,255,0.4);
+        }
+        .brand-name {
+            font-size: 18px; font-weight: 800;
+            background: linear-gradient(135deg, #fff 0%, #7ec8ff 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+        .brand-sub { font-size: 10px; color: var(--text-muted); letter-spacing: 0.08em; text-transform: uppercase; margin-top: -2px; }
+        .topbar-status { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .status-pill {
+            display: flex; align-items: center; gap: 6px;
+            padding: 5px 12px; border-radius: 99px;
+            background: var(--surface-2); border: 1px solid var(--border);
+            font-size: 11px; font-weight: 600; color: var(--text-muted);
+        }
+        .dot { width: 7px; height: 7px; border-radius: 50%; }
+        .dot-green { background: var(--green); box-shadow: 0 0 6px var(--green); animation: pulse 2s ease infinite; }
+        .dot-blue  { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+        .dot-amber { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+        @keyframes pulse { 0%,100%{opacity:1}50%{opacity:0.5} }
+
+        /* MAIN GRID */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 340px 1fr;
+            gap: 0;
+            height: calc(100vh - 65px);
+            overflow: hidden;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            background: var(--surface);
+            border-right: 1px solid var(--border);
+            display: flex; flex-direction: column;
+            overflow-y: auto; overflow-x: hidden;
+        }
+
+        /* CONTENT AREA */
+        .content-area {
+            display: flex; flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* TABS */
+        .tab-bar {
+            display: flex; align-items: center; gap: 2px;
+            padding: 10px 16px 0;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+            flex-shrink: 0;
+        }
+        .tab-btn {
+            padding: 8px 18px;
+            border: none; background: none;
+            color: var(--text-muted); font-size: 12px; font-weight: 600;
+            cursor: pointer; border-radius: 8px 8px 0 0;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        .tab-btn:hover { color: var(--text); background: var(--surface-2); }
+        .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--surface-2); }
+        .tab-panel { display: none; flex: 1; overflow: hidden; }
+        .tab-panel.active { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+
+        /* =========================================================
+           CARD / PANEL
+        ========================================================= */
+        .card {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            transition: border-color 0.2s ease;
+        }
+        .card:hover { border-color: var(--border-hover); }
+        .card-header {
+            padding: 14px 16px 10px;
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .section-label {
+            font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+            text-transform: uppercase; color: var(--text-muted);
+        }
+        .section-title { font-size: 14px; font-weight: 700; margin-top: 2px; }
+
+        /* =========================================================
+           FORM ELEMENTS
+        ========================================================= */
+        .field-wrap { display: flex; flex-direction: column; gap: 5px; }
+        .field-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+        .field {
+            width: 100%;
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); color: var(--text);
+            padding: 9px 12px; font-size: 13px; font-family: inherit;
+            outline: none; transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            appearance: none;
+        }
+        .field:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+        .field::placeholder { color: var(--text-dim); }
+        select.field { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b8aaa' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+
+        /* =========================================================
+           BUTTONS
+        ========================================================= */
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+            padding: 9px 16px; border-radius: var(--radius-sm);
+            border: none; font-size: 13px; font-weight: 600;
+            cursor: pointer; transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn-primary {
+            background: linear-gradient(135deg, #1a6fff, #0090ff);
+            color: #fff;
+            box-shadow: 0 4px 20px rgba(59,156,255,0.3);
+        }
+        .btn-primary:hover { box-shadow: 0 6px 28px rgba(59,156,255,0.5); filter: brightness(1.1); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; filter: none; box-shadow: none; }
+        .btn-ghost {
+            background: transparent; border: 1px solid var(--border);
+            color: var(--text-muted);
+        }
+        .btn-ghost:hover { background: var(--surface-3); color: var(--text); border-color: var(--border-hover); }
+        .btn-danger { background: rgba(255,77,109,0.15); border: 1px solid rgba(255,77,109,0.3); color: var(--red); }
+        .btn-danger:hover { background: rgba(255,77,109,0.25); }
+        .btn-sm { padding: 5px 10px; font-size: 11px; }
+        .btn-full { width: 100%; }
+        .btn-icon { width: 32px; height: 32px; padding: 0; }
+
+        /* =========================================================
+           BADGES
+        ========================================================= */
+        .badge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 8px; border-radius: 99px; font-size: 10px; font-weight: 700;
+        }
+        .badge-blue   { background: rgba(59,156,255,0.15); color: var(--accent); border: 1px solid rgba(59,156,255,0.25); }
+        .badge-green  { background: rgba(31,214,147,0.12); color: var(--green); border: 1px solid rgba(31,214,147,0.2); }
+        .badge-amber  { background: rgba(245,166,35,0.12); color: var(--amber); border: 1px solid rgba(245,166,35,0.2); }
+        .badge-red    { background: rgba(255,77,109,0.12); color: var(--red); border: 1px solid rgba(255,77,109,0.2); }
+        .badge-purple { background: rgba(167,139,250,0.12); color: var(--purple); border: 1px solid rgba(167,139,250,0.2); }
+        .badge-teal   { background: rgba(34,211,238,0.12); color: var(--teal); border: 1px solid rgba(34,211,238,0.2); }
+
+        /* =========================================================
+           SIDEBAR SECTIONS
+        ========================================================= */
+        .sidebar-section { padding: 14px; border-bottom: 1px solid var(--border); }
+        .sidebar-section:last-child { border-bottom: none; }
+
+        /* QUERY FORM */
+        #query-form { display: flex; flex-direction: column; gap: 12px; }
+
+        /* CONFIDENCE METER */
+        .confidence-bar-wrap { display: flex; flex-direction: column; gap: 4px; }
+        .confidence-bar-bg { height: 5px; background: var(--bg); border-radius: 9px; overflow: hidden; }
+        .confidence-bar-fill { height: 100%; border-radius: 9px; background: linear-gradient(90deg, var(--green), var(--teal)); transition: width 0.6s cubic-bezier(0.4,0,0.2,1); }
+
+        /* INDICATORS TABLE */
+        .indicator-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .indicator-table td { padding: 5px 0; vertical-align: top; }
+        .indicator-table td:first-child { color: var(--text-muted); width: 42%; padding-right: 8px; font-size: 11px; }
+        .indicator-table td:last-child { color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 11px; word-break: break-all; }
+
+        /* STATUS LOG */
+        #status-log {
+            font-size: 12px; font-family: 'JetBrains Mono', monospace;
+            color: var(--text-muted); line-height: 1.5;
+            min-height: 42px;
+            background: var(--bg); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); padding: 8px 12px;
+        }
+        .log-success { color: var(--green); }
+        .log-warn    { color: var(--amber); }
+        .log-error   { color: var(--red); }
+
+        /* =========================================================
+           GRAPH CANVAS
+        ========================================================= */
+        #cy-canvas {
+            flex: 1; min-height: 0;
+            background: var(--bg);
+            border-radius: 0;
+        }
+        .graph-toolbar {
+            display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+            background: var(--surface); border-bottom: 1px solid var(--border);
+            flex-wrap: wrap; flex-shrink: 0;
+        }
+        .graph-toolbar select.field { height: 32px; font-size: 12px; width: auto; }
+
+        /* =========================================================
+           MAP CANVAS
+        ========================================================= */
+        #map-canvas {
+            flex: 1; min-height: 0;
+        }
+        .leaflet-container { background: #05080d; }
+        .leaflet-tile { filter: brightness(0.6) saturate(0.5) hue-rotate(180deg); }
+
+        /* =========================================================
+           CASES PANEL
+        ========================================================= */
+        .cases-container { flex: 1; overflow-y: auto; padding: 12px; }
+        .case-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+        .case-card {
+            padding: 12px; cursor: pointer; text-align: left;
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            transition: all 0.2s ease;
+        }
+        .case-card:hover { border-color: var(--accent); background: var(--surface-3); transform: translateY(-1px); }
+        .case-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow); }
+        .case-id { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--text-muted); }
+        .case-indicator { font-size: 13px; font-weight: 600; margin-top: 4px; word-break: break-all; }
+        .case-meta { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+        .case-time { font-size: 10px; color: var(--text-dim); }
+
+        /* =========================================================
+           SOURCE HITS
+        ========================================================= */
+        .sources-container { flex: 1; overflow-y: auto; padding: 12px; }
+        .sources-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 8px; }
+        .source-card {
+            padding: 12px; background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); transition: border-color 0.2s ease;
+        }
+        .source-card:hover { border-color: var(--border-hover); }
+        .source-badge { font-size: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+        .source-title { font-size: 12px; font-weight: 600; margin-top: 4px; color: var(--text); }
+        .source-snippet { font-size: 11px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
+        .source-url { font-size: 10px; color: var(--accent); margin-top: 6px; word-break: break-all; text-decoration: none; }
+        .source-url:hover { text-decoration: underline; }
+        .source-confidence { font-size: 10px; margin-top: 6px; display: flex; align-items: center; gap: 5px; }
+
+        /* =========================================================
+           AUDIT PANEL
+        ========================================================= */
+        .audit-container { flex: 1; overflow-y: auto; padding: 12px; font-family: 'JetBrains Mono', monospace; }
+        .audit-entry {
+            font-size: 11px; padding: 7px 10px; border-radius: 6px;
+            border-left: 3px solid var(--border); margin-bottom: 6px;
+            background: var(--surface-2);
+        }
+        .audit-time { color: var(--text-dim); font-size: 10px; }
+        .audit-type { font-weight: 700; font-size: 11px; }
+        .audit-case  { border-left-color: var(--accent); }
+        .audit-invest { border-left-color: var(--green); }
+
+        /* =========================================================
+           TOOLTIP (node click)
+        ========================================================= */
+        #node-tooltip {
+            position: fixed; z-index: 500;
+            background: var(--surface-2); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); padding: 12px 14px; min-width: 200px;
+            box-shadow: var(--shadow); display: none;
+            font-size: 12px; pointer-events: none;
+        }
+
+        /* =========================================================
+           LOADING OVERLAY
+        ========================================================= */
+        #loading-overlay {
+            position: fixed; inset: 0; z-index: 999;
+            background: rgba(6,10,15,0.92); backdrop-filter: blur(8px);
+            display: none; align-items: center; justify-content: center;
+            flex-direction: column; gap: 18px;
+        }
+        #loading-overlay.active { display: flex; }
+        .spinner {
+            width: 50px; height: 50px; border-radius: 50%;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { font-size: 14px; color: var(--text-muted); text-align: center; }
+        .loading-steps { font-size: 12px; color: var(--text-dim); font-family: 'JetBrains Mono', monospace; }
+
+        /* =========================================================
+           SCAN PROGRESS BAR
+        ========================================================= */
+        #scan-progress {
+            height: 3px; width: 0%; background: linear-gradient(90deg, var(--accent), var(--teal));
+            border-radius: 2px; transition: width 0.3s ease;
+            position: fixed; top: 65px; left: 0; z-index: 99;
+        }
+
+        /* =========================================================
+           RESPONSIVE
+        ========================================================= */
+        @media (max-width: 1024px) {
+            .main-grid { grid-template-columns: 1fr; height: auto; overflow: visible; }
+            .sidebar { height: auto; max-height: none; border-right: none; border-bottom: 1px solid var(--border); }
+            .content-area { height: 70vh; }
+        }
+
+        /* =========================================================
+           MISC UTILITY
+        ========================================================= */
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .text-muted { color: var(--text-muted); }
+        .text-dim { color: var(--text-dim); }
+        .flex { display: flex; }
+        .flex-col { flex-direction: column; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-2 { gap: 8px; }
+        .gap-1 { gap: 4px; }
+        .mt-1 { margin-top: 4px; }
+        .mt-2 { margin-top: 8px; }
+        .mb-1 { margin-bottom: 4px; }
+        .w-full { width: 100%; }
+        .empty-state { 
+            text-align: center; padding: 40px 20px; color: var(--text-dim);
+            font-size: 13px;
+        }
+        .empty-icon { font-size: 32px; margin-bottom: 10px; opacity: 0.4; }
+        .search-bar-wrap { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+        .search-bar { height: 32px; font-size: 12px; }
+    </style>
+</head>
+<body>
+<div class="app-shell">
+
+    <!-- LOADING OVERLAY -->
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div>
+            <div class="loading-text" id="loading-title">Running OSINT Intelligence Scan</div>
+            <div class="loading-steps" id="loading-step">Initializing collectors…</div>
+        </div>
+    </div>
+
+    <!-- SCAN PROGRESS BAR -->
+    <div id="scan-progress"></div>
+
+    <!-- NODE TOOLTIP -->
+    <div id="node-tooltip">
+        <div id="tooltip-label" style="font-weight:700;font-size:13px;margin-bottom:6px;"></div>
+        <div id="tooltip-type" class="badge badge-blue" style="margin-bottom:8px;"></div>
+        <div id="tooltip-id" class="text-dim" style="font-size:10px;font-family:'JetBrains Mono',monospace;word-break:break-all;"></div>
+    </div>
+
+    <!-- =========================================================
+         TOP BAR
+    ========================================================= -->
+    <header class="topbar">
+        <div class="topbar-brand">
+            <div class="brand-icon">🔍</div>
+            <div>
+                <div class="brand-name">Looker OSINT</div>
+                <div class="brand-sub">Cyber Intelligence Console — Law Enforcement</div>
+            </div>
+        </div>
+        <div class="topbar-status">
+            <div class="status-pill"><div class="dot dot-green"></div>OSINT Active</div>
+            <div class="status-pill"><div class="dot dot-blue"></div>Neo4j Graph</div>
+            <div class="status-pill"><div class="dot dot-amber"></div>Entity Resolution</div>
+            <div class="status-pill" style="cursor:pointer;" onclick="loadAuditLog()"><div class="dot dot-blue"></div>Audit Trail</div>
+        </div>
+    </header>
+
+    <!-- =========================================================
+         MAIN GRID
+    ========================================================= -->
+    <div class="main-grid">
+
+        <!-- =====================================================
+             SIDEBAR
+        ===================================================== -->
+        <aside class="sidebar">
+
+            <!-- QUERY PANEL -->
+            <div class="sidebar-section">
+                <div class="section-label">Indicator Lookup</div>
+                <div class="section-title" style="margin-bottom:14px;">Run OSINT Scan</div>
+
+                <form id="query-form" onsubmit="return false;">
+                    <div class="field-wrap">
+                        <label class="field-label" for="sel-type">Indicator Type</label>
+                        <select class="field" id="sel-type">
+                            <option value="Username">👤 Username / Handle</option>
+                            <option value="Email">📧 Email Address</option>
+                            <option value="Phone Number">📱 Phone Number</option>
+                            <option value="Domain">🌐 Domain / URL</option>
+                            <option value="IP Address">🖥️ IP Address</option>
+                        </select>
+                    </div>
+                    <div class="field-wrap">
+                        <label class="field-label" for="target-val">Target Value</label>
+                        <input class="field" id="target-val" type="text" placeholder="e.g. johndoe, 192.168.1.1, phish.com" autocomplete="off" spellcheck="false">
+                    </div>
+                    <button class="btn btn-primary btn-full" id="scan-btn" onclick="runInvestigation()">
+                        <span>🚀</span> Run Active Intelligence Scan
+                    </button>
+                    <div id="status-log">Ready. Enter an indicator to begin OSINT collection.</div>
+                </form>
+            </div>
+
+            <!-- CONFIDENCE METER -->
+            <div class="sidebar-section" id="confidence-section" style="display:none;">
+                <div class="section-label">Assessment</div>
+                <div class="section-title mt-1">Confidence Score</div>
+                <div class="confidence-bar-wrap mt-2">
+                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                        <span class="text-muted" style="font-size:11px;" id="obs-state">—</span>
+                        <span style="font-size:14px;font-weight:700;" id="confidence-val">—</span>
+                    </div>
+                    <div class="confidence-bar-bg">
+                        <div class="confidence-bar-fill" id="confidence-fill" style="width:0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- EXTRACTED INDICATORS -->
+            <div class="sidebar-section" id="indicators-section" style="display:none;">
+                <div class="section-label">Extracted Intelligence</div>
+                <div class="section-title mt-1">Resolved Indicators</div>
+                <div class="mt-2">
+                    <table class="indicator-table" id="indicators-table">
+                        <tr><td colspan="2" class="text-dim" style="font-size:12px;">No data</td></tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- SPACER / CLEAR -->
+            <div class="sidebar-section" style="margin-top:auto;">
+                <button class="btn btn-ghost btn-full btn-sm" onclick="clearAll()">↺ Clear Workspace</button>
+                <div style="margin-top:10px;font-size:10px;color:var(--text-dim);text-align:center;">
+                    Looker v3.2 · Police Cyber Cell · Strictly Confidential
+                </div>
+            </div>
+        </aside>
+
+        <!-- =====================================================
+             CONTENT AREA
+        ===================================================== -->
+        <div class="content-area">
+
+            <!-- TAB BAR -->
+            <div class="tab-bar">
+                <button class="tab-btn active" data-tab="graph" onclick="switchTab('graph')">🕸️ Correlation Graph</button>
+                <button class="tab-btn" data-tab="map"   onclick="switchTab('map')">🗺️ Geo Map</button>
+                <button class="tab-btn" data-tab="cases" onclick="switchTab('cases')">📁 Case Ledger</button>
+                <button class="tab-btn" data-tab="sources" onclick="switchTab('sources')">📋 Source Evidence</button>
+                <button class="tab-btn" data-tab="audit" onclick="switchTab('audit')">🛡️ Audit Log</button>
+            </div>
+
+            <!-- GRAPH TAB -->
+            <div class="tab-panel active" id="tab-graph">
+                <div class="graph-toolbar">
+                    <select class="field" id="graph-filter" onchange="applyGraphFilter()" style="height:32px;font-size:12px;width:auto;">
+                        <option value="all">All Connections</option>
+                        <option value="raw">Observed Only</option>
+                        <option value="inferred">Inferred Only</option>
+                    </select>
+                    <button class="btn btn-ghost btn-sm" onclick="loadGraphData()">↺ Reload</button>
+                    <button class="btn btn-ghost btn-sm" onclick="cy.fit()">⊡ Fit View</button>
+                    <button class="btn btn-ghost btn-sm" onclick="relayoutGraph()">⟳ Re-layout</button>
+                    <span style="margin-left:auto;font-size:11px;color:var(--text-dim);" id="graph-stats">No nodes</span>
+                </div>
+                <div id="cy-canvas"></div>
+            </div>
+
+            <!-- MAP TAB -->
+            <div class="tab-panel" id="tab-map">
+                <div class="graph-toolbar">
+                    <span style="font-size:12px;color:var(--text-muted);">Geolocation intelligence from IP resolution</span>
+                    <button class="btn btn-ghost btn-sm" style="margin-left:auto;" onclick="map && map.setView([20,78],3)">Reset View</button>
+                </div>
+                <div id="map-canvas" style="flex:1;"></div>
+            </div>
+
+            <!-- CASES TAB -->
+            <div class="tab-panel" id="tab-cases">
+                <div class="search-bar-wrap">
+                    <input class="field search-bar w-full" id="case-search" placeholder="🔍 Search cases by indicator, ID, state…" oninput="renderCases()">
+                </div>
+                <div class="cases-container">
+                    <div class="case-grid" id="case-grid">
+                        <div class="empty-state">
+                            <div class="empty-icon">📁</div>
+                            <div>No cases yet. Run a scan to create a case.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SOURCES TAB -->
+            <div class="tab-panel" id="tab-sources">
+                <div class="search-bar-wrap">
+                    <input class="field search-bar w-full" id="sources-search" placeholder="🔍 Filter source evidence…" oninput="renderSources()">
+                </div>
+                <div class="sources-container">
+                    <div class="sources-grid" id="sources-grid">
+                        <div class="empty-state">
+                            <div class="empty-icon">📋</div>
+                            <div>No source evidence yet. Run a scan to collect OSINT data.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- AUDIT TAB -->
+            <div class="tab-panel" id="tab-audit">
+                <div style="padding:10px 14px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-shrink:0;">
+                    <button class="btn btn-ghost btn-sm" onclick="loadAuditLog()">↺ Refresh</button>
+                    <span class="text-dim" style="font-size:11px;">Immutable operational audit trail</span>
+                </div>
+                <div class="audit-container" id="audit-list">
+                    <div class="empty-state"><div class="empty-icon">🛡️</div><div>Loading audit trail…</div></div>
+                </div>
+            </div>
+
+        </div> <!-- /content-area -->
+    </div> <!-- /main-grid -->
+</div> <!-- /app-shell -->
+
+<script>
+    // ============================================================
+    // STATE
+    // ============================================================
+    const API = '/api';
+    let cy = null;
+    let map = null;
+    let geoMarkers = [];
+    let casesCache = [];
+    let sourcesCache = [];
+    let selectedCaseId = null;
+    let scanProgress = 0;
+    let scanTimer = null;
+
+    // ============================================================
+    // INIT
+    // ============================================================
+    window.addEventListener('DOMContentLoaded', () => {
+        initGraph();
+        initMap();
+        loadGraphData();
+        loadCases();
+        loadAuditLog();
+
+        document.getElementById('target-val').addEventListener('keydown', e => {
+            if (e.key === 'Enter') runInvestigation();
+        });
+    });
+
+    // ============================================================
+    // ESCAPE XSS
+    // ============================================================
+    function esc(v) {
+        return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]));
+    }
+
+    // ============================================================
+    // TAB SWITCHING
+    // ============================================================
+    function switchTab(name) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + name));
+        if (name === 'map' && map) setTimeout(() => map.invalidateSize(), 100);
+    }
+
+    // ============================================================
+    // STATUS LOG
+    // ============================================================
+    function setStatus(msg, mode = 'idle') {
+        const el = document.getElementById('status-log');
+        el.textContent = msg;
+        el.className = '';
+        if (mode === 'success') el.classList.add('log-success');
+        else if (mode === 'warn') el.classList.add('log-warn');
+        else if (mode === 'error') el.classList.add('log-error');
+    }
+
+    // ============================================================
+    // SCAN PROGRESS
+    // ============================================================
+    function startProgress() {
+        scanProgress = 0;
+        const bar = document.getElementById('scan-progress');
+        bar.style.width = '0%';
+        scanTimer = setInterval(() => {
+            scanProgress = Math.min(scanProgress + Math.random() * 8, 85);
+            bar.style.width = scanProgress + '%';
+        }, 400);
+    }
+    function finishProgress() {
+        clearInterval(scanTimer);
+        const bar = document.getElementById('scan-progress');
+        bar.style.width = '100%';
+        setTimeout(() => { bar.style.width = '0%'; }, 600);
+    }
+
+    // ============================================================
+    // LOADING OVERLAY
+    // ============================================================
+    const loadingSteps = [
+        'Initializing OSINT collectors…',
+        'Querying WhatsMyName database (500+ sites)…',
+        'Running domain RDAP / WHOIS lookup…',
+        'Performing DuckDuckGo correlation search…',
+        'Checking AbuseIPDB reputation feeds…',
+        'Running Shodan InternetDB port scan…',
+        'Extracting secondary indicators…',
+        'Normalizing and deduplicating observations…',
+        'Running entity resolution pipeline…',
+        'Computing correlation graph elements…',
+        'Writing intelligence to Neo4j…',
+        'Finalising case ledger entry…',
+    ];
+    let stepIdx = 0;
+    function showLoading(selector, value) {
+        stepIdx = 0;
+        document.getElementById('loading-title').textContent = `Scanning ${selector}: ${value}`;
+        document.getElementById('loading-step').textContent = loadingSteps[0];
+        document.getElementById('loading-overlay').classList.add('active');
+        const iv = setInterval(() => {
+            stepIdx = Math.min(stepIdx + 1, loadingSteps.length - 1);
+            document.getElementById('loading-step').textContent = loadingSteps[stepIdx];
+        }, 2800);
+        return iv;
+    }
+    function hideLoading(iv) {
+        clearInterval(iv);
+        document.getElementById('loading-overlay').classList.remove('active');
+    }
+
+    // ============================================================
+    // CYTOSCAPE GRAPH
+    // ============================================================
+    function initGraph() {
+        cy = cytoscape({
+            container: document.getElementById('cy-canvas'),
+            elements: [],
+            style: [
+                { selector: 'node', style: {
+                    'background-color': '#2a3d55', 'border-width': 1.5,
+                    'border-color': '#3b5a7e',
+                    'label': 'data(label)', 'color': '#e2ecf8',
+                    'font-size': '10px', 'font-family': 'JetBrains Mono, monospace',
+                    'text-valign': 'bottom', 'text-margin-y': '8px',
+                    'text-wrap': 'wrap', 'text-max-width': '100px',
+                    'width': 24, 'height': 24,
+                }},
+                { selector: "node[type='subject']", style: {
+                    'background-color': '#ff4d6d', 'width': 36, 'height': 36,
+                    'border-color': '#ff8099', 'border-width': 2.5,
+                    'font-size': '11px', 'font-weight': '700',
+                    'box-shadow': '0 0 20px rgba(255,77,109,0.5)',
+                }},
+                { selector: "node[type='username']", style: { 'background-color': '#1a6fff' } },
+                { selector: "node[type='email']",    style: { 'background-color': '#1fd693' } },
+                { selector: "node[type='domain']",   style: { 'background-color': '#f5a623' } },
+                { selector: "node[type='phone']",    style: { 'background-color': '#a78bfa' } },
+                { selector: "node[type='ip']",       style: { 'background-color': '#0c1118', 'border-color': '#f5a623', 'border-width': 2 } },
+                { selector: "node[type='source']",   style: { 'background-color': '#1e3050', 'width': 14, 'height': 14, 'font-size': '8px' } },
+                { selector: 'edge', style: {
+                    'width': 'mapData(confidence, 0, 1, 1, 4)',
+                    'opacity': 'mapData(confidence, 0, 1, 0.3, 0.9)',
+                    'line-color': '#2e4560', 'target-arrow-shape': 'triangle',
+                    'target-arrow-color': '#2e4560', 'curve-style': 'bezier',
+                    'label': 'data(label)', 'font-size': '8px', 'color': '#4a6b8c',
+                }},
+                { selector: "edge[type='inferred']", style: {
+                    'line-style': 'dashed', 'line-dash-pattern': [6, 4],
+                    'line-color': '#3a6080', 'target-arrow-color': '#3a6080',
+                }},
+                { selector: '.filtered-out', style: { 'display': 'none' } },
+                { selector: ':selected', style: {
+                    'border-color': '#3b9cff', 'border-width': 3,
+                }},
+            ],
+            layout: { name: 'cose', animate: true, animationDuration: 500, fit: true, padding: 40, nodeRepulsion: 4500 },
+        });
+
+        // Node click tooltip
+        cy.on('tap', 'node', function(evt) {
+            const node = evt.target;
+            const tt = document.getElementById('node-tooltip');
+            const renderedPos = evt.renderedPosition || evt.cyRenderedPosition;
+            tt.style.display = 'block';
+            tt.style.left = (renderedPos.x + 16) + 'px';
+            tt.style.top = (renderedPos.y + 16) + 'px';
+            document.getElementById('tooltip-label').textContent = node.data('label') || '—';
+            document.getElementById('tooltip-type').textContent = node.data('type') || '?';
+            document.getElementById('tooltip-id').textContent = node.data('id') || '';
+        });
+        cy.on('tap', function(evt) {
+            if (evt.target === cy) document.getElementById('node-tooltip').style.display = 'none';
+        });
+        cy.on('zoom pan', () => { document.getElementById('node-tooltip').style.display = 'none'; });
+    }
+
+    function relayoutGraph() {
+        cy.layout({ name: 'cose', animate: true, animationDuration: 500, fit: true, padding: 40, nodeRepulsion: 4500 }).run();
+    }
+
+    async function loadGraphData() {
+        try {
+            const elements = await apiFetch(`${API}/graph`);
+            cy.elements().remove();
+            if (elements && elements.length) {
+                cy.add(elements);
+                relayoutGraph();
+            }
+            applyGraphFilter();
+            const nodes = cy.nodes().length;
+            const edges = cy.edges().length;
+            document.getElementById('graph-stats').textContent = `${nodes} nodes · ${edges} edges`;
+        } catch (e) {
+            console.warn('Graph load failed:', e.message);
+        }
+    }
+
+    function applyGraphFilter() {
+        const val = document.getElementById('graph-filter').value;
+        cy.elements().removeClass('filtered-out');
+        if (val === 'raw') cy.edges("[type != 'raw']").addClass('filtered-out');
+        else if (val === 'inferred') cy.edges("[type != 'inferred']").addClass('filtered-out');
+        cy.nodes().forEach(n => {
+            if (n.connectedEdges().filter(e => !e.hasClass('filtered-out')).length === 0 && n.data('type') !== 'subject')
+                n.addClass('filtered-out');
+        });
+    }
+
+    // ============================================================
+    // LEAFLET MAP
+    // ============================================================
+    function initMap() {
+        map = L.map('map-canvas', { zoomControl: true }).setView([20, 78], 3);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            className: 'map-tiles'
+        }).addTo(map);
+    }
+
+    function addGeoMarker(lat, lon, label, color = '#3b9cff') {
+        if (!lat || !lon) return;
+        const icon = L.divIcon({
+            html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 10px ${color}99;"></div>`,
+            iconSize: [14, 14], iconAnchor: [7, 7], className: ''
+        });
+        const marker = L.marker([lat, lon], { icon }).addTo(map).bindPopup(`<b>${label}</b>`);
+        geoMarkers.push(marker);
+        return marker;
+    }
+
+    function updateMap(extracted) {
+        geoMarkers.forEach(m => m.remove());
+        geoMarkers = [];
+        const lat = extracted.latitude;
+        const lon = extracted.longitude;
+        if (lat && lon) {
+            const marker = addGeoMarker(lat, lon, extracted.geo_country || extracted.scammer_alias, '#ff4d6d');
+            map.setView([lat, lon], 7);
+            marker.openPopup();
+            switchTab('map');
+        }
+    }
+
+    // ============================================================
+    // MAIN INVESTIGATION
+    // ============================================================
+    async function runInvestigation() {
+        const selector = document.getElementById('sel-type').value;
+        const value = document.getElementById('target-val').value.trim();
+        if (!value) { setStatus('⚠️ Enter an indicator value.', 'warn'); return; }
+
+        const btn = document.getElementById('scan-btn');
+        btn.disabled = true;
+        setStatus(`Launching OSINT scan for ${selector}: ${value}`, 'warn');
+        startProgress();
+
+        const iv = showLoading(selector, value);
+
+        try {
+            const data = await apiFetch(`${API}/investigate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ selector, value })
+            });
+
+            hideLoading(iv);
+            finishProgress();
+
+            const intel = data.extracted_intelligence;
+            const caseEntry = data.case;
+
+            // Update indicators panel
+            renderIndicators(intel);
+
+            // Update confidence
+            const rel = intel.source_reliability || 0;
+            document.getElementById('confidence-section').style.display = '';
+            document.getElementById('indicators-section').style.display = '';
+            document.getElementById('confidence-val').textContent = `${(rel * 100).toFixed(0)}%`;
+            document.getElementById('confidence-fill').style.width = `${rel * 100}%`;
+            document.getElementById('obs-state').textContent = intel.observation_state || 'unknown';
+
+            // Store sources for rendering
+            sourcesCache = intel.source_hits || [];
+            renderSources();
+
+            // Refresh graph + map
+            await loadGraphData();
+            updateMap(intel);
+
+            // Refresh cases
+            await loadCases();
+            if (caseEntry) highlightCase(caseEntry.id);
+
+            // Switch to sources if there are hits
+            if (sourcesCache.length > 0) switchTab('sources');
+
+            setStatus(`✅ Scan complete. ${sourcesCache.length} evidence sources collected. State: ${intel.observation_state}.`, 'success');
+
+        } catch (err) {
+            hideLoading(iv);
+            finishProgress();
+            setStatus(`❌ Scan failed: ${err.message}`, 'error');
+        }
+
+        btn.disabled = false;
+    }
+
+    // ============================================================
+    // RENDER INDICATORS
+    // ============================================================
+    function renderIndicators(intel) {
+        const raw = intel.raw_indicators || {};
+        const rows = [
+            ['Alias',       intel.scammer_alias],
+            ['Observation', intel.observation_state],
+            ['Reliability', `${((intel.source_reliability || 0) * 100).toFixed(0)}%`],
+            ['Usernames',   (raw.username || []).join(', ') || '—'],
+            ['Emails',      (raw.email || []).join(', ') || '—'],
+            ['Phones',      (raw.phone || []).join(', ') || '—'],
+            ['Domains',     (raw.domain || []).join(', ') || '—'],
+            ['IP Addresses',(raw.ip || []).join(', ') || '—'],
+        ];
+        document.getElementById('indicators-table').innerHTML = rows.map(([k,v]) => `
+            <tr>
+                <td class="text-muted" style="font-size:11px;">${esc(k)}</td>
+                <td class="mono" style="font-size:11px;">${esc(v || '—')}</td>
+            </tr>
+        `).join('');
+    }
+
+    // ============================================================
+    // CASES
+    // ============================================================
+    async function loadCases() {
+        try {
+            casesCache = await apiFetch(`${API}/cases`);
+            renderCases();
+        } catch (e) { console.warn('Cases load failed:', e); }
+    }
+
+    function renderCases() {
+        const q = (document.getElementById('case-search')?.value || '').toLowerCase();
+        const filtered = casesCache.filter(c => JSON.stringify(c).toLowerCase().includes(q));
+        const grid = document.getElementById('case-grid');
+        if (!filtered.length) {
+            grid.innerHTML = `<div class="empty-state"><div class="empty-icon">📁</div><div>No matching cases.</div></div>`;
+            return;
+        }
+        grid.innerHTML = filtered.map(c => {
+            const state = c.observation_state || 'inferred';
+            const badgeClass = state === 'observed' ? 'badge-green' : state === 'unresolved' ? 'badge-red' : 'badge-amber';
+            const ts = c.created_at ? new Date(c.created_at).toLocaleString() : '—';
+            return `
+            <button class="case-card ${c.id === selectedCaseId ? 'selected' : ''}" onclick="loadCase('${esc(c.id)}')">
+                <div class="flex items-center justify-between">
+                    <span class="case-id mono">${esc(c.id)}</span>
+                    <span class="badge ${badgeClass}">${esc(state)}</span>
+                </div>
+                <div class="case-indicator">${esc(c.indicator_type)}: ${esc(c.indicator_value)}</div>
+                <div class="case-meta">
+                    <span class="case-time">${esc(ts)}</span>
+                    <span class="text-dim" style="font-size:10px;">${esc(c.scammer_alias?.slice(0,18) || '')}</span>
+                </div>
+            </button>`;
+        }).join('');
+    }
+
+    function loadCase(id) {
+        const c = casesCache.find(x => x.id === id);
+        if (!c) return;
+        selectedCaseId = id;
+        renderCases();
+        // Load source hits from case
+        sourcesCache = c.source_hits || [];
+        renderSources();
+        renderIndicators(c);
+        document.getElementById('confidence-section').style.display = '';
+        document.getElementById('indicators-section').style.display = '';
+        const rel = c.source_reliability || 0;
+        document.getElementById('confidence-val').textContent = `${(rel * 100).toFixed(0)}%`;
+        document.getElementById('confidence-fill').style.width = `${rel * 100}%`;
+        document.getElementById('obs-state').textContent = c.observation_state || 'inferred';
+        switchTab('sources');
+    }
+
+    function highlightCase(id) {
+        selectedCaseId = id;
+        renderCases();
+    }
+
+    // ============================================================
+    // SOURCES
+    // ============================================================
+    function renderSources(hits) {
+        const data = hits || sourcesCache;
+        const q = (document.getElementById('sources-search')?.value || '').toLowerCase();
+        const filtered = data.filter(s => JSON.stringify(s).toLowerCase().includes(q));
+        const grid = document.getElementById('sources-grid');
+        if (!filtered.length) {
+            grid.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><div>No source evidence collected yet.</div></div>`;
+            return;
+        }
+
+        const sourceColors = {
+            abuseipdb:        'badge-red',
+            ip_geolocation:   'badge-teal',
+            shodan_internetdb:'badge-amber',
+            duckduckgo_search:'badge-blue',
+            rdap_whois:       'badge-purple',
+            breach_lookup:    'badge-red',
+            'whatsmyname':    'badge-green',
+            default:          'badge-blue',
+        };
+
+        grid.innerHTML = filtered.map(h => {
+            const src = (h.source || '').toLowerCase();
+            let badgeClass = 'badge-blue';
+            for (const [key, cls] of Object.entries(sourceColors)) {
+                if (src.includes(key)) { badgeClass = cls; break; }
+            }
+            const conf = h.confidence ? `${(h.confidence * 100).toFixed(0)}%` : '';
+            const url = h.url || '';
+            return `
+            <div class="source-card">
+                <span class="badge ${badgeClass} source-badge">${esc(h.source || 'unknown')}</span>
+                <div class="source-title">${esc((h.title || '').replace(/^\[.*?\]\s*/, ''))}</div>
+                <div class="source-snippet">${esc(h.snippet || '—')}</div>
+                ${url ? `<a class="source-url" href="${esc(url)}" target="_blank" rel="noopener noreferrer">🔗 ${esc(url)}</a>` : ''}
+                ${conf ? `<div class="source-confidence"><span class="text-dim">Confidence:</span> <span style="color:var(--green)">${conf}</span></div>` : ''}
+            </div>`;
+        }).join('');
+    }
+
+    // ============================================================
+    // AUDIT LOG
+    // ============================================================
+    async function loadAuditLog() {
+        try {
+            const entries = await apiFetch(`${API}/audit`);
+            const list = document.getElementById('audit-list');
+            if (!entries || !entries.length) {
+                list.innerHTML = `<div class="empty-state"><div class="empty-icon">🛡️</div><div>Audit log is empty.</div></div>`;
+                return;
+            }
+            list.innerHTML = [...entries].reverse().slice(0, 200).map(e => {
+                const ts = e.timestamp ? new Date(e.timestamp).toLocaleString() : '—';
+                const type = e.event_type || 'event';
+                const isCase = type.includes('case');
+                const isInvest = type.includes('investigation');
+                let cls = '';
+                if (isCase) cls = 'audit-case';
+                if (isInvest) cls = 'audit-invest';
+                const payload = e.payload || {};
+                const detail = payload.case_id
+                    ? `${payload.case_id} · ${payload.selector}: ${payload.value}`
+                    : (payload.indicator_value ? `${payload.indicator_type}: ${payload.indicator_value}` : '');
+                return `
+                <div class="audit-entry ${cls}">
+                    <div class="flex items-center justify-between">
+                        <span class="audit-type">${esc(type.replace(/_/g,' ').toUpperCase())}</span>
+                        <span class="audit-time">${esc(ts)}</span>
+                    </div>
+                    ${detail ? `<div class="text-muted" style="font-size:10px;margin-top:3px;">${esc(detail)}</div>` : ''}
+                </div>`;
+            }).join('');
+        } catch (e) {
+            document.getElementById('audit-list').innerHTML = `<div class="empty-state"><div class="empty-icon">⚠️</div><div>Audit load failed: ${esc(e.message)}</div></div>`;
+        }
+    }
+
+    // ============================================================
+    // CLEAR
+    // ============================================================
+    function clearAll() {
+        cy.elements().remove();
+        document.getElementById('graph-stats').textContent = 'No nodes';
+        sourcesCache = [];
+        renderSources();
+        geoMarkers.forEach(m => m.remove());
+        geoMarkers = [];
+        document.getElementById('target-val').value = '';
+        document.getElementById('confidence-section').style.display = 'none';
+        document.getElementById('indicators-section').style.display = 'none';
+        setStatus('Workspace cleared. Ready for new scan.');
+        selectedCaseId = null;
+        renderCases();
+        switchTab('graph');
+    }
+
+    // ============================================================
+    // API HELPER
+    // ============================================================
+    async function apiFetch(url, options = {}) {
+        const resp = await fetch(url, options);
+        if (!resp.ok) {
+            let detail = resp.statusText;
+            try { const j = await resp.json(); detail = j.detail || j.error || detail; } catch {}
+            throw new Error(`HTTP ${resp.status}: ${detail}`);
+        }
+        return resp.json();
+    }
+</script>
+</body>
+</html>
