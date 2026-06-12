@@ -1,3 +1,4 @@
+import json
 import re
 from typing import List, Dict, Set, Tuple
 from pydantic import BaseModel, Field
@@ -14,7 +15,42 @@ class ResolvedEntity(BaseModel):
 
 class EntityResolver:
     @staticmethod
-    def resolve(observations: List[NormalizedObservation]) -> List[ResolvedEntity]:
+    def calculate_attribution(obs_val: str, obs_src: str, evidence: str, payload: dict, target_indicators: Dict[str, List[str]]) -> float:
+        """
+        Calculates the attribution confidence score for a discovered profile using
+        weighted signals and metadata matching.
+        """
+        # Baseline score for discovery matches (handle collision risk)
+        score = 0.30
+        
+        # If it is a domain, dns, or phone parser check, keep default high confidence
+        if any(s in obs_src for s in ["dns_resolver", "phone_parser", "ip_geolocation"]):
+            return 1.0
+
+        evidence_lower = (evidence + " " + json.dumps(payload)).lower()
+        
+        # Check against target indicators
+        # 1. Target Emails
+        for email in target_indicators.get("email", []):
+            if email.lower() in evidence_lower:
+                score += 0.55  # strong match
+                
+        # 2. Target Phones
+        for phone in target_indicators.get("phone", []):
+            clean_phone = re.sub(r"\D", "", phone)
+            if len(clean_phone) > 5 and clean_phone in re.sub(r"\D", "", evidence_lower):
+                score += 0.50
+                
+        # 3. Target Domains
+        for domain in target_indicators.get("domain", []):
+            if domain.lower() in evidence_lower:
+                score += 0.40
+
+        # Cap the final score at 0.99
+        return min(0.99, round(score, 2))
+
+    @staticmethod
+    def resolve(observations: List[NormalizedObservation], target_indicators: Dict[str, List[str]] = None) -> List[ResolvedEntity]:
         """
         Deduplicates observations by merging those with the same (entity_type, value)
         and combining their confidence, sources, and evidence.
@@ -27,6 +63,13 @@ class EntityResolver:
         resolved_list: List[ResolvedEntity] = []
 
         for (etype, val), obs_list in grouped.items():
+            # If target_indicators are provided, calculate attribution for profile checks
+            for o in obs_list:
+                if target_indicators and etype == "username" and "whatsmyname" in o.source:
+                    o.confidence = EntityResolver.calculate_attribution(
+                        o.value, o.source, o.evidence_text, o.raw_payload or {}, target_indicators
+                    )
+
             # Standard confidence aggregation: max confidence
             max_conf = max(o.confidence for o in obs_list)
             
@@ -49,6 +92,7 @@ class EntityResolver:
             ))
 
         return resolved_list
+
 
     @staticmethod
     def extract_implicit_relationships(resolved_entities: List[ResolvedEntity]) -> List[Tuple[str, str, str, float]]:

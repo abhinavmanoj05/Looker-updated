@@ -29,6 +29,9 @@ class GraphWriter:
                         neo4j_label = node_type.capitalize()
                         if neo4j_label == "Ip":
                             neo4j_label = "IP"
+                        elif node_type == "identity_cluster":
+                            neo4j_label = "IdentityCluster"
+
                         
                         # Merge the node
                         query = f"""

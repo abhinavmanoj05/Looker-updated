@@ -119,7 +119,21 @@ export default function App() {
               'box-shadow': '0 0 20px rgba(255,77,109,0.5)',
             },
           },
+          {
+            selector: "node[type='identity_cluster']",
+            style: {
+              'background-color': '#f5a623',
+              'border-color': '#ffea7a',
+              'border-width': 2,
+              width: 30,
+              height: 30,
+              'font-size': '11px',
+              'font-weight': '700',
+              'box-shadow': '0 0 15px rgba(245,166,35,0.5)',
+            },
+          },
           { selector: "node[type='username']", style: { 'background-color': '#1a6fff' } },
+
           { selector: "node[type='email']", style: { 'background-color': '#1fd693' } },
           { selector: "node[type='domain']", style: { 'background-color': '#f5a623' } },
           { selector: "node[type='phone']", style: { 'background-color': '#a78bfa' } },

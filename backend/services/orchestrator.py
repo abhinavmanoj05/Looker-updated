@@ -115,11 +115,25 @@ class IngestionOrchestrator:
             if norm:
                 normalized_obs.append(norm)
 
+        # Compile target indicators dictionary for attribution scoring
+        target_indicators = {
+            "username": [], "email": [], "domain": [],
+            "phone": [], "ip": [], "upi": [], "crypto": []
+        }
+        for norm in normalized_obs:
+            t = norm.entity_type
+            if t in target_indicators:
+                target_indicators[t].append(norm.value)
+        # Deduplicate
+        for k in target_indicators:
+            target_indicators[k] = list(set(target_indicators[k]))
+
         # 4. Resolve entities
-        resolved_entities = EntityResolver.resolve(normalized_obs)
+        resolved_entities = EntityResolver.resolve(normalized_obs, target_indicators)
 
         # 5. Extract implicit relationships
         implicit_links = EntityResolver.extract_implicit_relationships(resolved_entities)
+
 
         # 6. Build compatibility layer for app.py response
         raw_indicators = {

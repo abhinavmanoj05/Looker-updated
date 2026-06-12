@@ -41,38 +41,85 @@ class CorrelationEngine:
         # 2. Add Resolved Identifier nodes and OBSERVED_IN source links
         for entity in resolved_entities:
             entity_id = f"indicator::{entity.entity_type}::{entity.value}"
-            
-            # Map node type
             node_type = entity.entity_type # 'username', 'email', 'domain', 'phone', 'ip', etc.
-            add_node(entity_id, entity.value, node_type)
 
-            # Link Subject -> Identifier (Direct observation)
-            elements.append({
-                "data": {
-                    "source": subject_id,
-                    "target": entity_id,
-                    "label": f"HAS_{entity.entity_type.upper()}",
-                    "confidence": entity.confidence,
-                    "type": "raw"
-                }
-            })
+            # Special Handling for Usernames to build Identity Clusters
+            if entity.entity_type == "username":
+                # Create an IdentityCluster node for the username
+                cluster_id = f"cluster::username::{hashlib.sha256(entity.value.encode('utf-8')).hexdigest()[:12]}"
+                add_node(cluster_id, f"Cluster: {entity.value}", "identity_cluster")
 
-            # Add Source nodes and OBSERVED_IN edges
-            for src in entity.sources:
-                src_clean = src.split("::")[-1].lower()
-                src_node_id = f"source::{hashlib.sha256(src_clean.encode('utf-8')).hexdigest()[:12]}"
-                add_node(src_node_id, src_clean.capitalize(), "source")
-                
-                # Link Identifier -> Source
+                # Link Subject -> IdentityCluster
                 elements.append({
                     "data": {
-                        "source": entity_id,
-                        "target": src_node_id,
-                        "label": "OBSERVED_IN",
+                        "source": subject_id,
+                        "target": cluster_id,
+                        "label": "INFERRED_IDENTITY",
+                        "confidence": 1.0,
+                        "type": "raw"
+                    }
+                })
+
+                # Link the IdentityCluster to each discovered profile on specific sites
+                for obs in entity.observations:
+                    if "whatsmyname" in obs.source:
+                        site_name = obs.source.split("::")[-1]
+                        profile_id = f"profile::{site_name}::{obs.value}"
+                        
+                        # Add individual profile node
+                        add_node(profile_id, f"{obs.value} ({site_name.capitalize()})", "username")
+
+                        # Link IdentityCluster -> Discovered Profile
+                        elements.append({
+                            "data": {
+                                "source": cluster_id,
+                                "target": profile_id,
+                                "label": "BELONGS_TO",
+                                "confidence": obs.confidence,
+                                "type": "inferred" if obs.confidence < 0.85 else "raw"
+                            }
+                        })
+                    else:
+                        # Fallback for non-WMS username observations
+                        add_node(entity_id, entity.value, node_type)
+                        elements.append({
+                            "data": {
+                                "source": subject_id,
+                                "target": entity_id,
+                                "label": f"HAS_{entity.entity_type.upper()}",
+                                "confidence": entity.confidence,
+                                "type": "raw"
+                            }
+                        })
+            else:
+                # Normal indicators (emails, domains, phones, IPs)
+                add_node(entity_id, entity.value, node_type)
+                elements.append({
+                    "data": {
+                        "source": subject_id,
+                        "target": entity_id,
+                        "label": f"HAS_{entity.entity_type.upper()}",
                         "confidence": entity.confidence,
                         "type": "raw"
                     }
                 })
+
+                # Add Source nodes and OBSERVED_IN edges
+                for src in entity.sources:
+                    src_clean = src.split("::")[-1].lower()
+                    src_node_id = f"source::{hashlib.sha256(src_clean.encode('utf-8')).hexdigest()[:12]}"
+                    add_node(src_node_id, src_clean.capitalize(), "source")
+                    
+                    # Link Identifier -> Source
+                    elements.append({
+                        "data": {
+                            "source": entity_id,
+                            "target": src_node_id,
+                            "label": "OBSERVED_IN",
+                            "confidence": entity.confidence,
+                            "type": "raw"
+                        }
+                    })
 
         # 3. Add Implicit Links discovered from text scraping
         for src_val, src_type, tgt_val, tgt_type, rel_label, conf in implicit_links:
@@ -91,3 +138,4 @@ class CorrelationEngine:
                 })
 
         return elements
+
