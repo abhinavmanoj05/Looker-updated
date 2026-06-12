@@ -279,6 +279,74 @@ async def investigate_entity_v1(payload: TargetQuery, background_tasks: Backgrou
     return await investigate_entity(payload, background_tasks, request)
 
 
+@app.post("/api/override")
+async def override_link(payload: dict, request: Request):
+    # Retrieve credentials/keys if needed, or check request header
+    _require_api_key(request)
+    
+    source = payload.get("source")
+    target = payload.get("target")
+    action = payload.get("action")  # 'confirm' or 'sever'
+    
+    if not source or not target or not action:
+        raise HTTPException(status_code=400, detail="Missing source, target, or action in payload")
+        
+    if action not in ["confirm", "sever"]:
+        raise HTTPException(status_code=400, detail="Action must be 'confirm' or 'sever'")
+
+    # 1. Update In-Memory GRAPH_STORE
+    with GRAPH_STORE_LOCK:
+        if action == "confirm":
+            # Set confidence to 1.0 and type to 'raw'
+            for edge in GRAPH_STORE["edges"]:
+                ed = edge.get("data", {})
+                if ed.get("source") == source and ed.get("target") == target:
+                    ed["confidence"] = 1.0
+                    ed["type"] = "raw"
+        elif action == "sever":
+            # Remove edge from GRAPH_STORE
+            GRAPH_STORE["edges"] = [
+                e for e in GRAPH_STORE["edges"]
+                if not (e.get("data", {}).get("source") == source and e.get("data", {}).get("target") == target)
+            ]
+
+    # 2. Update Neo4j Graph Database
+    driver = db_graph._ensure_driver()
+    if driver:
+        try:
+            with db_graph.get_session() as session:
+                if action == "confirm":
+                    # Update BELONGS_TO relationship confidence to 1.0 and type to 'raw'
+                    query = """
+                    MATCH (a {id: $source})-[r:BELONGS_TO]->(b {id: $target})
+                    SET r.confidence = 1.0, r.type = 'raw'
+                    RETURN count(r) as count
+                    """
+                    session.run(query, source=source, target=target)
+                elif action == "sever":
+                    # Delete relationship
+                    query = """
+                    MATCH (a {id: $source})-[r:BELONGS_TO]->(b {id: $target})
+                    DELETE r
+                    """
+                    session.run(query, source=source, target=target)
+        except Exception as e:
+            # Log error but don't crash since in-memory was updated
+            pass
+
+    # 3. Log Audit Trail
+    _append_audit(
+        "analyst_override",
+        {
+            "source": source,
+            "target": target,
+            "action": action,
+        }
+    )
+
+    return {"status": "Success", "message": f"Link successfully {action}ed."}
+
+
 @app.get("/api/v1/looker/network")
 async def get_graph_data_v1(request: Request):
     return await get_graph_data(request)

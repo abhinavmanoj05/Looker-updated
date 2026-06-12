@@ -351,7 +351,7 @@ select.field {
     background: var(--surface-2); border: 1px solid var(--border);
     border-radius: var(--radius-sm); padding: 12px 14px; min-width: 200px;
     box-shadow: var(--shadow); display: none;
-    font-size: 12px; pointer-events: none;
+    font-size: 12px;
 }
 
 /* =========================================================

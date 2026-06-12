@@ -53,9 +53,29 @@ export default function App() {
   const [sourcesSearch, setSourcesSearch] = useState('');
   
   // Node Click tooltip
-  const [tooltip, setTooltip] = useState({ show: false, x: 0, y: 0, label: '', type: '', id: '' });
+  const [tooltip, setTooltip] = useState({ show: false, x: 0, y: 0, label: '', type: '', id: '', source: null, target: null });
   const [graphStats, setGraphStats] = useState('No nodes');
   const [graphFilter, setGraphFilter] = useState('all');
+
+  async function handleOverride(source, target, action) {
+    try {
+      setStatusMsg(`Sending analyst override: ${action}...`);
+      setStatusMode('warn');
+      await apiFetch(`${API}/override`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source, target, action }),
+      });
+      setTooltip({ show: false, x: 0, y: 0, label: '', type: '', id: '', source: null, target: null });
+      await loadGraphData();
+      await loadAuditLog();
+      setStatusMsg(`✅ Attribution link successfully ${action}ed.`);
+      setStatusMode('success');
+    } catch (err) {
+      setStatusMsg(`❌ Override failed: ${err.message}`);
+      setStatusMode('error');
+    }
+  }
 
   // DOM Refs
   const cyRef = useRef(null);
@@ -185,17 +205,36 @@ export default function App() {
           label: node.data('label') || '—',
           type: node.data('type') || '?',
           id: node.data('id') || '',
+          source: null,
+          target: null,
         });
+      });
+
+      cyInstance.on('tap', 'edge', (evt) => {
+        const edge = evt.target;
+        const renderedPos = evt.renderedPosition || evt.cyRenderedPosition;
+        if (edge.data('label') === 'BELONGS_TO') {
+          setTooltip({
+            show: true,
+            x: renderedPos.x + 16,
+            y: renderedPos.y + 16,
+            label: `Attribution Link: ${edge.data('label')}`,
+            type: 'link',
+            id: `Confidence: ${(edge.data('confidence') * 100).toFixed(0)}%`,
+            source: edge.data('source'),
+            target: edge.data('target'),
+          });
+        }
       });
 
       cyInstance.on('tap', (evt) => {
         if (evt.target === cyInstance) {
-          setTooltip({ show: false, x: 0, y: 0, label: '', type: '', id: '' });
+          setTooltip({ show: false, x: 0, y: 0, label: '', type: '', id: '', source: null, target: null });
         }
       });
 
       cyInstance.on('zoom pan', () => {
-        setTooltip({ show: false, x: 0, y: 0, label: '', type: '', id: '' });
+        setTooltip({ show: false, x: 0, y: 0, label: '', type: '', id: '', source: null, target: null });
       });
 
       cyRef.current = cyInstance;
@@ -478,6 +517,22 @@ export default function App() {
           <div style={{ fontWeight: 700, fontSize: '13px', marginBottom: '6px' }}>{tooltip.label}</div>
           <div className="badge badge-blue" style={{ marginBottom: '8px' }}>{tooltip.type}</div>
           <div className="text-dim" style={{ fontSize: '10px', fontFamily: 'JetBrains Mono, monospace', wordBreak: 'break-all' }}>{tooltip.id}</div>
+          {tooltip.source && tooltip.target && (
+            <div style={{ marginTop: '10px', display: 'flex', gap: '6px' }}>
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => handleOverride(tooltip.source, tooltip.target, 'confirm')}
+              >
+                ✓ Confirm Link
+              </button>
+              <button
+                className="btn btn-danger btn-sm"
+                onClick={() => handleOverride(tooltip.source, tooltip.target, 'sever')}
+              >
+                ✗ Sever Link
+              </button>
+            </div>
+          )}
         </div>
       )}
 
